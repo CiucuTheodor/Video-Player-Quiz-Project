@@ -18,18 +18,17 @@ const balls = [
 
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     balls.forEach(ball => {
-       
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.fillStyle = ball.color;
         ctx.fill();
         ctx.closePath();
-        
+
         ball.x += ball.dx;
         ball.y += ball.dy;
-        
+
         if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
             ball.dx *= -1;
         }
@@ -37,11 +36,75 @@ function animate() {
             ball.dy *= -1;
         }
     });
-    
+
     requestAnimationFrame(animate);
 }
 
 animate();
+
+const audioManager = {
+    audioContext: null,
+
+    init() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.audioContext = new AudioContext();
+    },
+
+    playCorrect() {
+        const now = this.audioContext.currentTime;
+        this.playNote(523.25, now, 0.15);
+        this.playNote(659.25, now + 0.1, 0.15);
+        this.playNote(783.99, now + 0.2, 0.3);
+    },
+
+    playWrong() {
+        const now = this.audioContext.currentTime;
+        this.playBuzz(200, now, 0.15);
+        this.playBuzz(150, now + 0.15, 0.25);
+    },
+
+    playNote(frequency, startTime, duration) {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    },
+
+    playBuzz(frequency, startTime, duration) {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.value = frequency;
+
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+        gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+    },
+
+    resume() {
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+    }
+};
 
 const quizManagement = {
     quizzes: [],
@@ -50,11 +113,8 @@ const quizManagement = {
 
     init() {
         this.videoElement = document.getElementById('test');
-        if (!this.videoElement) {
-            console.error('Video element not found!');
-            return;
-        }
-        
+        if (!this.videoElement) return;
+
         this.loadQuizzes();
         this.setupFormListener();
         this.setupVideoListener();
@@ -63,11 +123,8 @@ const quizManagement = {
 
     setupFormListener() {
         const form = document.getElementById('add-quiz-form');
-        if (!form) {
-            console.error('Form not found!');
-            return;
-        }
-        
+        if (!form) return;
+
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             this.addQuiz();
@@ -76,31 +133,26 @@ const quizManagement = {
 
     setupVideoListener() {
         if (!this.videoElement) return;
-        
+
         let lastTime = -1;
-        
+
         this.videoElement.addEventListener('timeupdate', () => {
             const currentTime = Math.floor(this.videoElement.currentTime);
-            
             if (currentTime !== lastTime) {
                 lastTime = currentTime;
-                console.log('Video time:', currentTime, 'seconds | Quizzes at times:', this.quizzes.map(q => q.time));
                 this.checkForQuiz(currentTime);
             }
         });
 
         this.videoElement.addEventListener('seeked', () => {
             this.shownQuizzes.clear();
-            console.log('Quizzes reset due to seeking');
         });
-        
-        console.log('Video listener setup complete. Total quizzes:', this.quizzes.length);
     },
 
     addQuiz() {
         const time = parseInt(document.getElementById('quiz-time').value);
         const question = document.getElementById('quiz-question-input').value.trim();
-        
+
         const options = [
             document.getElementById('option-0').value.trim(),
             document.getElementById('option-1').value.trim(),
@@ -110,26 +162,13 @@ const quizManagement = {
 
         const correctAnswer = parseInt(document.querySelector('input[name="correct-answer"]:checked').value);
 
-        if (isNaN(time) || time < 0) {
-            alert('Please enter a valid time in seconds.');
-            return;
-        }
-
-        if (!question) {
-            alert('Please enter a question.');
-            return;
-        }
-
-        if (options.some(opt => !opt)) {
-            alert('Please fill in all 4 answer options.');
-            return;
-        }
+        if (isNaN(time) || time < 0) return;
+        if (!question) return;
+        if (options.some(opt => !opt)) return;
 
         const existingIndex = this.quizzes.findIndex(q => q.time === time);
         if (existingIndex !== -1) {
-            if (!confirm(`A quiz already exists at ${time} seconds. Replace it?`)) {
-                return;
-            }
+            if (!confirm(`A quiz already exists at ${time} seconds. Replace it?`)) return;
             this.quizzes.splice(existingIndex, 1);
         }
 
@@ -148,9 +187,6 @@ const quizManagement = {
 
         document.getElementById('add-quiz-form').reset();
         document.getElementById('correct-0').checked = true;
-        
-        alert(`✅ Quiz added successfully at ${time} seconds!\n\nPlay the video and it will pause at ${time}s to show the quiz.`);
-        console.log('Quiz added:', quiz);
     },
 
     deleteQuiz(id) {
@@ -158,38 +194,26 @@ const quizManagement = {
             this.quizzes = this.quizzes.filter(q => q.id !== id);
             this.saveQuizzes();
             this.renderQuizList();
-            console.log('Quiz deleted:', id);
         }
     },
 
     checkForQuiz(currentTime) {
         const quiz = this.quizzes.find(q => q.time === currentTime);
-        
-        if (quiz) {
-            console.log('✅ QUIZ FOUND at', currentTime, 'seconds!');
-            if (!this.shownQuizzes.has(quiz.id)) {
-                console.log('🎬 SHOWING QUIZ NOW!');
-                this.showQuiz(quiz);
-                this.shownQuizzes.add(quiz.id);
-            } else {
-                console.log('⚠️ Quiz already shown');
-            }
+        if (quiz && !this.shownQuizzes.has(quiz.id)) {
+            this.showQuiz(quiz);
+            this.shownQuizzes.add(quiz.id);
         }
     },
 
     showQuiz(quiz) {
         this.videoElement.pause();
-        console.log('Showing quiz:', quiz);
 
         const overlay = document.getElementById('quiz-overlay');
         const questionText = document.getElementById('question-text');
         const answerOptions = document.getElementById('answer-options');
         const feedbackText = document.getElementById('feedback-text');
 
-        if (!overlay || !questionText || !answerOptions) {
-            console.error('Quiz overlay elements not found!');
-            return;
-        }
+        if (!overlay || !questionText || !answerOptions) return;
 
         questionText.textContent = quiz.question;
         answerOptions.innerHTML = '';
@@ -200,8 +224,8 @@ const quizManagement = {
             const optionDiv = document.createElement('div');
             optionDiv.style.marginBottom = '10px';
             optionDiv.innerHTML = `
-                <input type="radio" name="quiz-answer" value="${index}" id="answer-${index}" style="margin-right: 10px;">
-                <label for="answer-${index}" style="color: white; font-size: 18px; cursor: pointer;">
+                <input type="radio" name="quiz-answer" value="${index}" id="answer-${index}">
+                <label for="answer-${index}">
                     ${String.fromCharCode(65 + index)}) ${option}
                 </label>
             `;
@@ -209,17 +233,12 @@ const quizManagement = {
         });
 
         overlay.style.display = 'block';
-
         this.currentQuiz = quiz;
     },
 
     submitAnswer(quiz) {
         const selectedAnswer = document.querySelector('input[name="quiz-answer"]:checked');
-        
-        if (!selectedAnswer) {
-            alert('Please select an answer!');
-            return;
-        }
+        if (!selectedAnswer) return;
 
         const answerIndex = parseInt(selectedAnswer.value);
         const feedbackText = document.getElementById('feedback-text');
@@ -228,13 +247,11 @@ const quizManagement = {
         if (answerIndex === quiz.correctAnswer) {
             feedbackText.textContent = '✓ Correct! Well done!';
             feedbackText.style.color = 'lightgreen';
-            feedbackText.style.fontSize = '20px';
-            feedbackText.style.fontWeight = 'bold';
+            audioManager.playCorrect();
         } else {
             feedbackText.textContent = `✗ Incorrect. The correct answer was: ${quiz.options[quiz.correctAnswer]}`;
             feedbackText.style.color = 'red';
-            feedbackText.style.fontSize = '18px';
-            feedbackText.style.fontWeight = 'bold';
+            audioManager.playWrong();
         }
 
         setTimeout(() => {
@@ -245,56 +262,31 @@ const quizManagement = {
 
     renderQuizList() {
         const container = document.getElementById('quiz-list-container');
-        
-        if (!container) {
-            console.error('Quiz list container not found!');
-            return;
-        }
-        
+        if (!container) return;
+
         if (this.quizzes.length === 0) {
-            container.innerHTML = '<p style="color: gray; text-align: center;">No quizzes added yet.</p>';
+            container.innerHTML = '<p>No quizzes added yet.</p>';
             return;
         }
 
         container.innerHTML = this.quizzes.map(quiz => `
             <div class="quiz-item">
-                <div class="quiz-item-header">
-                    <span class="quiz-item-time">⏱️ ${quiz.time}s</span>
-                    <button class="quiz-item-delete" onclick="quizManagement.deleteQuiz(${quiz.id})">Delete</button>
+                <div>
+                    <span>${quiz.time}s</span>
+                    <button onclick="quizManagement.deleteQuiz(${quiz.id})">Delete</button>
                 </div>
-                <div class="quiz-item-question"><strong>Q:</strong> ${quiz.question}</div>
-                <ul class="quiz-item-options">
-                    ${quiz.options.map((opt, idx) => `
-                        <li class="${idx === quiz.correctAnswer ? 'correct-option' : ''}">
-                            ${String.fromCharCode(65 + idx)}) ${opt}
-                            ${idx === quiz.correctAnswer ? ' ✓' : ''}
-                        </li>
-                    `).join('')}
-                </ul>
+                <div>${quiz.question}</div>
             </div>
         `).join('');
     },
 
     saveQuizzes() {
-        const quizzesData = this.quizzes.map(q => ({
-            id: q.id,
-            time: q.time,
-            question: q.question,
-            options: q.options,
-            correctAnswer: q.correctAnswer
-        }));
-        localStorage.setItem('videoQuizzes', JSON.stringify(quizzesData));
-        console.log('Quizzes saved to localStorage');
+        localStorage.setItem('videoQuizzes', JSON.stringify(this.quizzes));
     },
 
     loadQuizzes() {
         const saved = localStorage.getItem('videoQuizzes');
-        if (saved) {
-            this.quizzes = JSON.parse(saved);
-            console.log('Loaded quizzes from localStorage:', this.quizzes);
-        } else {
-            console.log('No saved quizzes found');
-        }
+        if (saved) this.quizzes = JSON.parse(saved);
     }
 };
 
@@ -303,7 +295,13 @@ function dosomething() {
         quizManagement.submitAnswer(quizManagement.currentQuiz);
     }
 }
+
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Initializing quiz management...');
+    audioManager.init();
+
+    document.addEventListener('click', () => {
+        audioManager.resume();
+    }, { once: true });
+
     quizManagement.init();
 });
